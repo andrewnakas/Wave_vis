@@ -239,12 +239,13 @@
     <div class="controls">
         <label for="dataLayer">Data Layer:</label>
         <select id="dataLayer">
-            <option value="buoys">NOAA Buoys</option>
+            <option value="buoys" selected>NOAA Buoys</option>
             <option value="waves">Wave Heights</option>
-            <option value="both" selected>Both</option>
+            <option value="both">Both</option>
         </select>
 
-        <button id="refreshBtn" onclick="loadData()">Refresh Data</button>
+        <button id="refreshBtn" onclick="loadBuoyData()">Refresh Buoys</button>
+        <button id="loadWavesBtn" onclick="loadWaveData()">Load Wave Data</button>
 
         <div style="margin-left: auto;">
             <span id="lastUpdate" style="color: #7f8c8d; font-size: 12px;"></span>
@@ -609,18 +610,17 @@
             progressContainer.classList.remove('active');
         }
 
-        // Load all data incrementally
-        async function loadData() {
+        // Load buoy data
+        async function loadBuoyData() {
             const btn = document.getElementById('refreshBtn');
             btn.disabled = true;
             btn.textContent = 'Loading...';
 
-            // Reset data
+            // Reset buoy data
             buoyData = [];
-            waveData = [];
 
             try {
-                console.log('Starting data fetch...');
+                console.log('Starting buoy data fetch...');
                 updateProgress(5, 'Fetching station list...');
 
                 // Fetch buoy stations
@@ -628,47 +628,98 @@
                 console.log(`Found ${stations.length} total buoy stations`);
                 updateProgress(10, `Found ${stations.length} buoy stations`);
 
-                // Start with just 10 buoys for quick initial display
-                const quickBuoys = stations.slice(0, 10);
-                const moreBuoys = stations.slice(10, 30);
+                // Load all buoys
+                const totalBuoys = Math.min(stations.length, 50); // Cap at 50 for performance
+                const buoysToLoad = stations.slice(0, totalBuoys);
 
-                // Load first 10 buoys quickly
-                updateProgress(15, 'Loading first batch of buoys...');
-                for (let i = 0; i < quickBuoys.length; i++) {
-                    const station = quickBuoys[i];
+                for (let i = 0; i < buoysToLoad.length; i++) {
+                    const station = buoysToLoad[i];
                     const data = await fetchBuoyData(station.id);
                     buoyData.push({ ...station, data });
 
-                    // Update display incrementally
-                    displayBuoys();
-                    updateStats();
-                    updateProgress(15 + (i / quickBuoys.length) * 20,
-                        `Loaded ${i + 1}/${quickBuoys.length} buoys...`);
+                    // Update display every 5 buoys or on last buoy
+                    if (i % 5 === 0 || i === buoysToLoad.length - 1) {
+                        displayBuoys();
+                        updateStats();
+                    }
+
+                    const percent = 10 + ((i + 1) / buoysToLoad.length) * 85;
+                    const active = buoyData.filter(b => b.data).length;
+                    updateProgress(percent,
+                        `Loading buoys: ${i + 1}/${buoysToLoad.length} (${active} active)`);
                 }
 
-                console.log(`Quick load: ${buoyData.filter(b => b.data).length} buoys displayed`);
+                const activeBuoys = buoyData.filter(b => b.data).length;
+                console.log(`Loaded ${activeBuoys} active buoys out of ${buoysToLoad.length} total`);
 
-                // Load wave data (faster than many buoy requests)
-                updateProgress(40, 'Loading global wave forecast data...');
+                updateProgress(100, `Complete! ${activeBuoys} active buoys loaded`);
 
-                // Load wave points one by one to show progress
+                // Update timestamp
+                document.getElementById('lastUpdate').textContent =
+                    `Buoys updated: ${new Date().toLocaleString()}`;
+
+                // Hide progress after a brief delay
+                setTimeout(hideProgress, 1500);
+
+                console.log('Buoy data loading complete!');
+
+            } catch (error) {
+                console.error('Error loading buoy data:', error);
+                updateProgress(0, 'Error loading data - check console');
+                setTimeout(hideProgress, 3000);
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Refresh Buoys';
+        }
+
+        // Load wave data
+        async function loadWaveData() {
+            const btn = document.getElementById('loadWavesBtn');
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
+
+            // Reset wave data
+            waveData = [];
+
+            try {
+                console.log('Starting wave data fetch...');
+                updateProgress(0, 'Preparing to fetch global wave data...');
+
+                // All wave points
                 const wavePoints = [
                     { lat: 40.5, lon: 286.0, name: "North Atlantic" },
                     { lat: 33.5, lon: 241.8, name: "Pacific Coast" },
                     { lat: -33.5, lon: 151.5, name: "Sydney" },
                     { lat: 51.5, lon: 359.5, name: "English Channel" },
+                    { lat: 1.5, lon: 104.0, name: "Singapore" },
                     { lat: 25.5, lon: 279.8, name: "Miami" },
                     { lat: 21.5, lon: 202.5, name: "Hawaii" },
-                    { lat: 37.5, lon: 237.5, name: "San Francisco" },
-                    { lat: -34.5, lon: 18.5, name: "Cape Town" },
+                    { lat: -23.5, lon: 313.5, name: "São Paulo Coast" },
+                    { lat: 55.5, lon: 12.5, name: "Baltic Sea" },
                     { lat: 35.5, lon: 140.0, name: "Tokyo Bay" },
-                    { lat: -37.5, lon: 145.0, name: "Melbourne" }
+                    { lat: -34.5, lon: 18.5, name: "Cape Town" },
+                    { lat: 59.5, lon: 11.0, name: "Oslo Fjord" },
+                    { lat: 37.5, lon: 237.5, name: "San Francisco" },
+                    { lat: 41.5, lon: 12.5, name: "Mediterranean" },
+                    { lat: -37.5, lon: 145.0, name: "Melbourne" },
+                    { lat: 13.0, lon: 80.5, name: "Bay of Bengal" },
+                    { lat: -12.0, lon: 283.0, name: "Peru Coast" },
+                    { lat: 64.0, lon: 338.0, name: "Iceland" },
+                    { lat: -41.0, lon: 175.0, name: "New Zealand" },
+                    { lat: 0.0, lon: 330.0, name: "Mid Atlantic" }
                 ];
 
                 const corsProxy = 'https://corsproxy.io/?';
+                const totalPoints = wavePoints.length;
 
                 for (let i = 0; i < wavePoints.length; i++) {
                     const point = wavePoints[i];
+                    const percent = ((i + 1) / totalPoints) * 100;
+
+                    updateProgress(percent,
+                        `Fetching: ${point.name} (${i + 1}/${totalPoints}) - ${Math.round(percent)}%`);
+
                     try {
                         const baseUrl = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json`;
                         const query = `?Thgt[(last)][(0.0)][({${point.lat}})][({${point.lon}})],Tdir[(last)][(0.0)][({${point.lat}})][({${point.lon}})],Tper[(last)][(0.0)][({${point.lat}})][({${point.lon}})]`;
@@ -690,57 +741,42 @@
                                 // Update display incrementally
                                 displayWaves();
                                 updateStats();
+
+                                console.log(`✓ ${point.name}: ${row[4]?.toFixed(2)}m`);
+                            } else {
+                                console.warn(`✗ ${point.name}: No data available`);
                             }
+                        } else {
+                            console.warn(`✗ ${point.name}: HTTP ${response.status}`);
                         }
                     } catch (error) {
-                        console.error(`Error loading ${point.name}:`, error);
+                        console.error(`✗ ${point.name}: ${error.message}`);
                     }
-
-                    updateProgress(40 + (i / wavePoints.length) * 35,
-                        `Wave data: ${point.name} (${i + 1}/${wavePoints.length})`);
                 }
 
-                console.log(`Wave data: ${waveData.length} points displayed`);
+                console.log(`Wave data: ${waveData.length}/${totalPoints} points loaded`);
 
-                // Load remaining buoys in background
-                updateProgress(80, 'Loading additional buoys...');
-                for (let i = 0; i < moreBuoys.length; i++) {
-                    const station = moreBuoys[i];
-                    const data = await fetchBuoyData(station.id);
-                    buoyData.push({ ...station, data });
-
-                    // Update every 5 buoys to avoid too many redraws
-                    if (i % 5 === 0 || i === moreBuoys.length - 1) {
-                        displayBuoys();
-                        updateStats();
-                    }
-
-                    updateProgress(80 + (i / moreBuoys.length) * 15,
-                        `Additional buoys: ${i + 1}/${moreBuoys.length}`);
-                }
-
-                const activeBuoys = buoyData.filter(b => b.data).length;
-                console.log(`Total: ${activeBuoys} active buoys, ${waveData.length} wave points`);
-
-                updateProgress(100, 'Complete!');
+                updateProgress(100, `Complete! ${waveData.length}/${totalPoints} wave points loaded`);
 
                 // Update timestamp
+                const currentUpdate = document.getElementById('lastUpdate').textContent;
                 document.getElementById('lastUpdate').textContent =
-                    `Last updated: ${new Date().toLocaleString()}`;
+                    currentUpdate ? currentUpdate + ` | Waves: ${new Date().toLocaleString()}` :
+                    `Waves updated: ${new Date().toLocaleString()}`;
 
                 // Hide progress after a brief delay
-                setTimeout(hideProgress, 1000);
+                setTimeout(hideProgress, 1500);
 
-                console.log('Data loading complete!');
+                console.log('Wave data loading complete!');
 
             } catch (error) {
-                console.error('Error loading data:', error);
-                updateProgress(0, 'Error loading data - check console');
+                console.error('Error loading wave data:', error);
+                updateProgress(0, 'Error loading wave data - check console');
                 setTimeout(hideProgress, 3000);
             }
 
             btn.disabled = false;
-            btn.textContent = 'Refresh Data';
+            btn.textContent = 'Load Wave Data';
         }
 
         // Handle data layer changes
@@ -751,10 +787,10 @@
 
         // Initialize
         initMap();
-        loadData();
+        loadBuoyData();
 
-        // Auto-refresh every 5 minutes
-        setInterval(loadData, 5 * 60 * 1000);
+        // Auto-refresh buoys every 5 minutes
+        setInterval(loadBuoyData, 5 * 60 * 1000);
     </script>
 </body>
 </html>
