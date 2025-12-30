@@ -186,6 +186,48 @@
             color: #667eea;
             text-decoration: none;
         }
+
+        .progress-container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            margin: 20px;
+            margin-top: 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: none;
+        }
+
+        .progress-container.active {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .progress-status {
+            margin-top: 10px;
+            color: #2c3e50;
+            font-size: 14px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -207,6 +249,13 @@
         <div style="margin-left: auto;">
             <span id="lastUpdate" style="color: #7f8c8d; font-size: 12px;"></span>
         </div>
+    </div>
+
+    <div class="progress-container" id="progressContainer">
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill">0%</div>
+        </div>
+        <div class="progress-status" id="progressStatus">Initializing...</div>
     </div>
 
     <div class="stats" id="stats">
@@ -382,78 +431,6 @@
             }
         }
 
-        // Fetch global wave data from NOAA WaveWatch III
-        async function fetchWaveData() {
-            const points = [
-                { lat: 40.5, lon: 286.0, name: "North Atlantic" },  // Converted to 0-360 format
-                { lat: 33.5, lon: 241.8, name: "Pacific Coast" },
-                { lat: -33.5, lon: 151.5, name: "Sydney" },
-                { lat: 51.5, lon: 359.5, name: "English Channel" },
-                { lat: 1.5, lon: 104.0, name: "Singapore" },
-                { lat: 25.5, lon: 279.8, name: "Miami" },
-                { lat: 21.5, lon: 202.5, name: "Hawaii" },
-                { lat: -23.5, lon: 313.5, name: "São Paulo Coast" },
-                { lat: 55.5, lon: 12.5, name: "Baltic Sea" },
-                { lat: 35.5, lon: 140.0, name: "Tokyo Bay" },
-                { lat: -34.5, lon: 18.5, name: "Cape Town" },
-                { lat: 59.5, lon: 11.0, name: "Oslo Fjord" },
-                { lat: 37.5, lon: 237.5, name: "San Francisco" },
-                { lat: 41.5, lon: 12.5, name: "Mediterranean" },
-                { lat: -37.5, lon: 145.0, name: "Melbourne" },
-                { lat: 13.0, lon: 80.5, name: "Bay of Bengal" },
-                { lat: -12.0, lon: 283.0, name: "Peru Coast" },
-                { lat: 64.0, lon: 338.0, name: "Iceland" },
-                { lat: -41.0, lon: 175.0, name: "New Zealand" },
-                { lat: 0.0, lon: 330.0, name: "Mid Atlantic" }
-            ];
-
-            const wavePoints = [];
-
-            // Fetch data for all points - WaveWatch III uses grid data
-            // Using CORS proxy to avoid browser CORS restrictions
-            const corsProxy = 'https://corsproxy.io/?';
-
-            for (const point of points) {
-                try {
-                    // NOAA WaveWatch III ERDDAP API
-                    // Thgt = significant wave height (total)
-                    // Tdir = peak wave direction
-                    // Tper = peak wave period
-                    // Note: ERDDAP uses 0-360 longitude format
-                    const baseUrl = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json`;
-                    const query = `?Thgt[(last)][(0.0)][({${point.lat}})][({${point.lon}})],Tdir[(last)][(0.0)][({${point.lat}})][({${point.lon}})],Tper[(last)][(0.0)][({${point.lat}})][({${point.lon}})]`;
-                    const url = corsProxy + encodeURIComponent(baseUrl + query);
-
-                    const response = await fetch(url);
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                    const data = await response.json();
-
-                    if (data.table && data.table.rows && data.table.rows.length > 0) {
-                        const row = data.table.rows[0];
-                        // ERDDAP returns: [time, depth, latitude, longitude, Thgt, Tdir, Tper]
-                        const timestamp = new Date(row[0]).toISOString();
-                        const waveHeight = row[4]; // Thgt in meters
-                        const waveDirection = row[5]; // Tdir in degrees
-                        const wavePeriod = row[6]; // Tper in seconds
-
-                        wavePoints.push({
-                            ...point,
-                            waveHeight: waveHeight,
-                            waveDirection: waveDirection,
-                            wavePeriod: wavePeriod,
-                            timestamp: timestamp
-                        });
-                    }
-                } catch (error) {
-                    console.error(`Error fetching wave data for ${point.name}:`, error);
-                    // Continue with next point even if this one fails
-                }
-            }
-
-            return wavePoints;
-        }
-
         // Get color based on wave height
         function getWaveColor(height) {
             if (!height || isNaN(height)) return '#999';
@@ -614,54 +591,152 @@
                 buoyData.filter(b => b.data).length + waveData.length;
         }
 
-        // Load all data
+        // Update progress bar
+        function updateProgress(percent, status) {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressFill = document.getElementById('progressFill');
+            const progressStatus = document.getElementById('progressStatus');
+
+            progressContainer.classList.add('active');
+            progressFill.style.width = percent + '%';
+            progressFill.textContent = Math.round(percent) + '%';
+            progressStatus.textContent = status;
+        }
+
+        // Hide progress bar
+        function hideProgress() {
+            const progressContainer = document.getElementById('progressContainer');
+            progressContainer.classList.remove('active');
+        }
+
+        // Load all data incrementally
         async function loadData() {
             const btn = document.getElementById('refreshBtn');
             btn.disabled = true;
             btn.textContent = 'Loading...';
 
+            // Reset data
+            buoyData = [];
+            waveData = [];
+
             try {
                 console.log('Starting data fetch...');
+                updateProgress(5, 'Fetching station list...');
 
                 // Fetch buoy stations
-                btn.textContent = 'Loading buoys...';
                 const stations = await fetchBuoyStations();
                 console.log(`Found ${stations.length} total buoy stations`);
+                updateProgress(10, `Found ${stations.length} buoy stations`);
 
-                // Limit to first 30 buoys for performance and to avoid rate limiting
-                const limitedStations = stations.slice(0, 30);
+                // Start with just 10 buoys for quick initial display
+                const quickBuoys = stations.slice(0, 10);
+                const moreBuoys = stations.slice(10, 30);
 
-                // Fetch buoy data with progress
-                const buoyPromises = limitedStations.map(async (station, index) => {
-                    // Add small delay to avoid overwhelming the API
-                    await new Promise(resolve => setTimeout(resolve, index * 100));
+                // Load first 10 buoys quickly
+                updateProgress(15, 'Loading first batch of buoys...');
+                for (let i = 0; i < quickBuoys.length; i++) {
+                    const station = quickBuoys[i];
                     const data = await fetchBuoyData(station.id);
-                    return { ...station, data };
-                });
+                    buoyData.push({ ...station, data });
 
-                buoyData = await Promise.all(buoyPromises);
+                    // Update display incrementally
+                    displayBuoys();
+                    updateStats();
+                    updateProgress(15 + (i / quickBuoys.length) * 20,
+                        `Loaded ${i + 1}/${quickBuoys.length} buoys...`);
+                }
+
+                console.log(`Quick load: ${buoyData.filter(b => b.data).length} buoys displayed`);
+
+                // Load wave data (faster than many buoy requests)
+                updateProgress(40, 'Loading global wave forecast data...');
+
+                // Load wave points one by one to show progress
+                const wavePoints = [
+                    { lat: 40.5, lon: 286.0, name: "North Atlantic" },
+                    { lat: 33.5, lon: 241.8, name: "Pacific Coast" },
+                    { lat: -33.5, lon: 151.5, name: "Sydney" },
+                    { lat: 51.5, lon: 359.5, name: "English Channel" },
+                    { lat: 25.5, lon: 279.8, name: "Miami" },
+                    { lat: 21.5, lon: 202.5, name: "Hawaii" },
+                    { lat: 37.5, lon: 237.5, name: "San Francisco" },
+                    { lat: -34.5, lon: 18.5, name: "Cape Town" },
+                    { lat: 35.5, lon: 140.0, name: "Tokyo Bay" },
+                    { lat: -37.5, lon: 145.0, name: "Melbourne" }
+                ];
+
+                const corsProxy = 'https://corsproxy.io/?';
+
+                for (let i = 0; i < wavePoints.length; i++) {
+                    const point = wavePoints[i];
+                    try {
+                        const baseUrl = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json`;
+                        const query = `?Thgt[(last)][(0.0)][({${point.lat}})][({${point.lon}})],Tdir[(last)][(0.0)][({${point.lat}})][({${point.lon}})],Tper[(last)][(0.0)][({${point.lat}})][({${point.lon}})]`;
+                        const url = corsProxy + encodeURIComponent(baseUrl + query);
+
+                        const response = await fetch(url);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.table && data.table.rows && data.table.rows.length > 0) {
+                                const row = data.table.rows[0];
+                                waveData.push({
+                                    ...point,
+                                    waveHeight: row[4],
+                                    waveDirection: row[5],
+                                    wavePeriod: row[6],
+                                    timestamp: new Date(row[0]).toISOString()
+                                });
+
+                                // Update display incrementally
+                                displayWaves();
+                                updateStats();
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Error loading ${point.name}:`, error);
+                    }
+
+                    updateProgress(40 + (i / wavePoints.length) * 35,
+                        `Wave data: ${point.name} (${i + 1}/${wavePoints.length})`);
+                }
+
+                console.log(`Wave data: ${waveData.length} points displayed`);
+
+                // Load remaining buoys in background
+                updateProgress(80, 'Loading additional buoys...');
+                for (let i = 0; i < moreBuoys.length; i++) {
+                    const station = moreBuoys[i];
+                    const data = await fetchBuoyData(station.id);
+                    buoyData.push({ ...station, data });
+
+                    // Update every 5 buoys to avoid too many redraws
+                    if (i % 5 === 0 || i === moreBuoys.length - 1) {
+                        displayBuoys();
+                        updateStats();
+                    }
+
+                    updateProgress(80 + (i / moreBuoys.length) * 15,
+                        `Additional buoys: ${i + 1}/${moreBuoys.length}`);
+                }
+
                 const activeBuoys = buoyData.filter(b => b.data).length;
-                console.log(`Loaded data for ${activeBuoys} active buoys`);
+                console.log(`Total: ${activeBuoys} active buoys, ${waveData.length} wave points`);
 
-                // Fetch wave data
-                btn.textContent = 'Loading wave data...';
-                waveData = await fetchWaveData();
-                console.log(`Loaded ${waveData.length} wave data points`);
-
-                // Display data
-                displayBuoys();
-                displayWaves();
-                updateStats();
+                updateProgress(100, 'Complete!');
 
                 // Update timestamp
                 document.getElementById('lastUpdate').textContent =
                     `Last updated: ${new Date().toLocaleString()}`;
 
+                // Hide progress after a brief delay
+                setTimeout(hideProgress, 1000);
+
                 console.log('Data loading complete!');
 
             } catch (error) {
                 console.error('Error loading data:', error);
-                alert('Error loading data. Check console for details. Try refreshing the page.');
+                updateProgress(0, 'Error loading data - check console');
+                setTimeout(hideProgress, 3000);
             }
 
             btn.disabled = false;
