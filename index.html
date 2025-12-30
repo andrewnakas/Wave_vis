@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Wave & Weather Buoy Data Visualization</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+
+        .controls {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            margin: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .controls label {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .controls select, .controls button {
+            padding: 8px 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .controls button {
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .controls button:hover {
+            background: #5568d3;
+        }
+
+        .controls button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        #map {
+            height: 70vh;
+            margin: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+
+        .loading {
+            text-align: center;
+            color: white;
+            padding: 20px;
+            font-size: 18px;
+        }
+
+        .stats {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            margin: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 10px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+
+        .legend {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .legend-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #2c3e50;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
+            border-radius: 3px;
+        }
+
+        .popup-content {
+            font-size: 13px;
+            max-width: 250px;
+        }
+
+        .popup-content h3 {
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .popup-content .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .popup-content .data-label {
+            font-weight: bold;
+            color: #555;
+        }
+
+        .popup-content .data-value {
+            color: #667eea;
+        }
+
+        .footer {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            margin: 20px;
+            margin-top: 0;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌊 Global Wave & Weather Buoy Data</h1>
+        <p>Real-time data from NOAA buoys and NOAA WaveWatch III global wave model</p>
+    </div>
+
+    <div class="controls">
+        <label for="dataLayer">Data Layer:</label>
+        <select id="dataLayer">
+            <option value="buoys">NOAA Buoys</option>
+            <option value="waves">Wave Heights</option>
+            <option value="both" selected>Both</option>
+        </select>
+
+        <button id="refreshBtn" onclick="loadData()">Refresh Data</button>
+
+        <div style="margin-left: auto;">
+            <span id="lastUpdate" style="color: #7f8c8d; font-size: 12px;"></span>
+        </div>
+    </div>
+
+    <div class="stats" id="stats">
+        <div class="stat-item">
+            <div class="stat-value" id="buoyCount">-</div>
+            <div class="stat-label">Active Buoys</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="maxWaveHeight">-</div>
+            <div class="stat-label">Max Wave Height (m)</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="avgWaveHeight">-</div>
+            <div class="stat-label">Avg Wave Height (m)</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="dataPoints">-</div>
+            <div class="stat-label">Total Data Points</div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="footer">
+        Data sources:
+        <a href="https://www.ndbc.noaa.gov/" target="_blank">NOAA National Data Buoy Center</a> |
+        <a href="https://polar.ncep.noaa.gov/waves/wavewatch/" target="_blank">NOAA WaveWatch III Global Wave Model</a>
+        <br>
+        All data from U.S. Government public domain sources
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let map;
+        let buoyMarkers = [];
+        let waveMarkers = [];
+        let buoyData = [];
+        let waveData = [];
+
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([20, 0], 2);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18
+            }).addTo(map);
+
+            // Add legend
+            const legend = L.control({ position: 'bottomright' });
+            legend.onAdd = function(map) {
+                const div = L.DomUtil.create('div', 'legend');
+                div.innerHTML = `
+                    <div class="legend-title">Wave Height (m)</div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #00ff00;"></div>
+                        <span>0-1m (Calm)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ffff00;"></div>
+                        <span>1-2m (Light)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ffa500;"></div>
+                        <span>2-4m (Moderate)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ff4500;"></div>
+                        <span>4-6m (Rough)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ff0000;"></div>
+                        <span>6m+ (Very Rough)</span>
+                    </div>
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd;">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #3388ff; border: 2px solid white;"></div>
+                            <span>NOAA Buoy</span>
+                        </div>
+                    </div>
+                `;
+                return div;
+            };
+            legend.addTo(map);
+        }
+
+        // Fetch NOAA buoy station list
+        async function fetchBuoyStations() {
+            try {
+                // Use NOAA's station list - we'll fetch active stations
+                const response = await fetch('https://www.ndbc.noaa.gov/activestations.xml');
+                const text = await response.text();
+
+                // Parse XML
+                const parser = new DOMParser();
+                const xml = parser.parseFromString(text, 'text/xml');
+                const stations = xml.querySelectorAll('station');
+
+                const buoyList = [];
+                stations.forEach(station => {
+                    const lat = parseFloat(station.getAttribute('lat'));
+                    const lon = parseFloat(station.getAttribute('lon'));
+                    const id = station.getAttribute('id');
+                    const name = station.getAttribute('name');
+
+                    if (lat && lon && id) {
+                        buoyList.push({ id, name, lat, lon });
+                    }
+                });
+
+                return buoyList;
+            } catch (error) {
+                console.error('Error fetching buoy stations:', error);
+                return [];
+            }
+        }
+
+        // Fetch real-time data for a specific buoy
+        async function fetchBuoyData(buoyId) {
+            try {
+                const response = await fetch(`https://www.ndbc.noaa.gov/data/realtime2/${buoyId}.txt`);
+                const text = await response.text();
+
+                // Parse the latest data line
+                const lines = text.split('\n');
+                if (lines.length < 3) return null;
+
+                const headers = lines[0].trim().split(/\s+/);
+                const data = lines[2].trim().split(/\s+/);
+
+                const dataObj = {};
+                headers.forEach((header, i) => {
+                    dataObj[header] = data[i];
+                });
+
+                return {
+                    waveHeight: parseFloat(dataObj['WVHT']),
+                    windSpeed: parseFloat(dataObj['WSPD']),
+                    windDir: parseFloat(dataObj['WDIR']),
+                    pressure: parseFloat(dataObj['PRES']),
+                    temp: parseFloat(dataObj['ATMP']),
+                    waterTemp: parseFloat(dataObj['WTMP']),
+                    timestamp: `${dataObj['#YY']}-${dataObj['MM']}-${dataObj['DD']} ${dataObj['hh']}:${dataObj['mm']}`
+                };
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // Fetch global wave data from NOAA WaveWatch III
+        async function fetchWaveData() {
+            const points = [
+                { lat: 40.7, lon: -74.0, name: "North Atlantic" },
+                { lat: 33.7, lon: -118.2, name: "Pacific Coast" },
+                { lat: -33.9, lon: 151.2, name: "Sydney" },
+                { lat: 51.5, lon: -0.1, name: "English Channel" },
+                { lat: 1.3, lon: 103.8, name: "Singapore" },
+                { lat: 25.8, lon: -80.2, name: "Miami" },
+                { lat: 21.3, lon: -157.8, name: "Hawaii" },
+                { lat: -23.5, lon: -46.6, name: "São Paulo Coast" },
+                { lat: 55.7, lon: 12.6, name: "Baltic Sea" },
+                { lat: 35.7, lon: 139.7, name: "Tokyo Bay" },
+                { lat: -34.6, lon: 18.4, name: "Cape Town" },
+                { lat: 59.9, lon: 10.8, name: "Oslo Fjord" },
+                { lat: 37.8, lon: -122.4, name: "San Francisco" },
+                { lat: 41.9, lon: 12.5, name: "Mediterranean" },
+                { lat: -37.8, lon: 144.9, name: "Melbourne" },
+                { lat: 13.1, lon: 80.3, name: "Bay of Bengal" },
+                { lat: -12.0, lon: -77.0, name: "Peru Coast" },
+                { lat: 64.1, lon: -21.9, name: "Iceland" },
+                { lat: -41.3, lon: 174.8, name: "New Zealand" },
+                { lat: 0.0, lon: -30.0, name: "Mid Atlantic" }
+            ];
+
+            const wavePoints = [];
+
+            // Fetch data for all points - WaveWatch III uses grid data
+            for (const point of points) {
+                try {
+                    // NOAA WaveWatch III ERDDAP API
+                    // htsgwsfc = significant height of combined wind waves and swell
+                    // dirpwsfc = primary wave direction
+                    // perpwsfc = primary wave mean period
+                    const url = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json?htsgwsfc[(last)][({${point.lat}})][({${point.lon}})],dirpwsfc[(last)][({${point.lat}})][({${point.lon}})],perpwsfc[(last)][({${point.lat}})][({${point.lon}})]`;
+
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if (data.table && data.table.rows && data.table.rows.length > 0) {
+                        const row = data.table.rows[0];
+                        // ERDDAP returns: [time, latitude, longitude, htsgwsfc, dirpwsfc, perpwsfc]
+                        const timestamp = new Date(row[0]).toISOString();
+                        const waveHeight = row[3]; // htsgwsfc in meters
+                        const waveDirection = row[4]; // dirpwsfc in degrees
+                        const wavePeriod = row[5]; // perpwsfc in seconds
+
+                        wavePoints.push({
+                            ...point,
+                            waveHeight: waveHeight,
+                            waveDirection: waveDirection,
+                            wavePeriod: wavePeriod,
+                            timestamp: timestamp
+                        });
+                    }
+                } catch (error) {
+                    console.error(`Error fetching wave data for ${point.name}:`, error);
+                }
+            }
+
+            return wavePoints;
+        }
+
+        // Get color based on wave height
+        function getWaveColor(height) {
+            if (!height || isNaN(height)) return '#999';
+            if (height < 1) return '#00ff00';
+            if (height < 2) return '#ffff00';
+            if (height < 4) return '#ffa500';
+            if (height < 6) return '#ff4500';
+            return '#ff0000';
+        }
+
+        // Add buoy markers to map
+        function displayBuoys() {
+            // Clear existing markers
+            buoyMarkers.forEach(marker => map.removeLayer(marker));
+            buoyMarkers = [];
+
+            const dataLayer = document.getElementById('dataLayer').value;
+            if (dataLayer === 'waves') return;
+
+            buoyData.forEach(buoy => {
+                if (!buoy.data) return;
+
+                const icon = L.divIcon({
+                    className: 'custom-marker',
+                    html: `<div style="
+                        background: ${getWaveColor(buoy.data.waveHeight)};
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 50%;
+                        border: 2px solid #3388ff;
+                        box-shadow: 0 0 4px rgba(0,0,0,0.3);
+                    "></div>`,
+                    iconSize: [16, 16]
+                });
+
+                const popupContent = `
+                    <div class="popup-content">
+                        <h3>🎯 ${buoy.name || buoy.id}</h3>
+                        <div class="data-row">
+                            <span class="data-label">Station ID:</span>
+                            <span class="data-value">${buoy.id}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Wave Height:</span>
+                            <span class="data-value">${buoy.data.waveHeight?.toFixed(2) || 'N/A'} m</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Wind Speed:</span>
+                            <span class="data-value">${buoy.data.windSpeed?.toFixed(1) || 'N/A'} m/s</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Wind Dir:</span>
+                            <span class="data-value">${buoy.data.windDir || 'N/A'}°</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Air Temp:</span>
+                            <span class="data-value">${buoy.data.temp?.toFixed(1) || 'N/A'}°C</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Water Temp:</span>
+                            <span class="data-value">${buoy.data.waterTemp?.toFixed(1) || 'N/A'}°C</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Pressure:</span>
+                            <span class="data-value">${buoy.data.pressure?.toFixed(1) || 'N/A'} hPa</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Updated:</span>
+                            <span class="data-value">${buoy.data.timestamp}</span>
+                        </div>
+                    </div>
+                `;
+
+                const marker = L.marker([buoy.lat, buoy.lon], { icon })
+                    .bindPopup(popupContent)
+                    .addTo(map);
+
+                buoyMarkers.push(marker);
+            });
+        }
+
+        // Add wave markers to map
+        function displayWaves() {
+            // Clear existing markers
+            waveMarkers.forEach(marker => map.removeLayer(marker));
+            waveMarkers = [];
+
+            const dataLayer = document.getElementById('dataLayer').value;
+            if (dataLayer === 'buoys') return;
+
+            waveData.forEach(wave => {
+                const icon = L.divIcon({
+                    className: 'custom-marker',
+                    html: `<div style="
+                        background: ${getWaveColor(wave.waveHeight)};
+                        width: 20px;
+                        height: 20px;
+                        border-radius: 50%;
+                        border: 2px solid white;
+                        box-shadow: 0 0 6px rgba(0,0,0,0.4);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-weight: bold;
+                        font-size: 10px;
+                    ">${wave.waveHeight?.toFixed(1) || '?'}</div>`,
+                    iconSize: [24, 24]
+                });
+
+                const popupContent = `
+                    <div class="popup-content">
+                        <h3>🌊 ${wave.name}</h3>
+                        <div class="data-row">
+                            <span class="data-label">Location:</span>
+                            <span class="data-value">${wave.lat.toFixed(2)}°, ${wave.lon.toFixed(2)}°</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Wave Height:</span>
+                            <span class="data-value">${wave.waveHeight?.toFixed(2) || 'N/A'} m</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Wave Direction:</span>
+                            <span class="data-value">${wave.waveDirection?.toFixed(0) || 'N/A'}°</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Wave Period:</span>
+                            <span class="data-value">${wave.wavePeriod?.toFixed(1) || 'N/A'} s</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Updated:</span>
+                            <span class="data-value">${wave.timestamp}</span>
+                        </div>
+                    </div>
+                `;
+
+                const marker = L.marker([wave.lat, wave.lon], { icon })
+                    .bindPopup(popupContent)
+                    .addTo(map);
+
+                waveMarkers.push(marker);
+            });
+        }
+
+        // Update statistics
+        function updateStats() {
+            const allWaveHeights = [
+                ...buoyData.filter(b => b.data?.waveHeight).map(b => b.data.waveHeight),
+                ...waveData.filter(w => w.waveHeight).map(w => w.waveHeight)
+            ];
+
+            document.getElementById('buoyCount').textContent = buoyData.filter(b => b.data).length;
+            document.getElementById('maxWaveHeight').textContent =
+                allWaveHeights.length > 0 ? Math.max(...allWaveHeights).toFixed(2) : '-';
+            document.getElementById('avgWaveHeight').textContent =
+                allWaveHeights.length > 0 ? (allWaveHeights.reduce((a, b) => a + b, 0) / allWaveHeights.length).toFixed(2) : '-';
+            document.getElementById('dataPoints').textContent =
+                buoyData.filter(b => b.data).length + waveData.length;
+        }
+
+        // Load all data
+        async function loadData() {
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
+
+            try {
+                // Fetch buoy stations
+                const stations = await fetchBuoyStations();
+
+                // Limit to first 50 buoys for performance
+                const limitedStations = stations.slice(0, 50);
+
+                // Fetch buoy data
+                buoyData = await Promise.all(
+                    limitedStations.map(async station => {
+                        const data = await fetchBuoyData(station.id);
+                        return { ...station, data };
+                    })
+                );
+
+                // Fetch wave data
+                waveData = await fetchWaveData();
+
+                // Display data
+                displayBuoys();
+                displayWaves();
+                updateStats();
+
+                // Update timestamp
+                document.getElementById('lastUpdate').textContent =
+                    `Last updated: ${new Date().toLocaleString()}`;
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                alert('Error loading data. Please try again.');
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Refresh Data';
+        }
+
+        // Handle data layer changes
+        document.getElementById('dataLayer').addEventListener('change', () => {
+            displayBuoys();
+            displayWaves();
+        });
+
+        // Initialize
+        initMap();
+        loadData();
+
+        // Auto-refresh every 5 minutes
+        setInterval(loadData, 5 * 60 * 1000);
+    </script>
+</body>
+</html>
