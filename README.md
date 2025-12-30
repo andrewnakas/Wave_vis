@@ -41,16 +41,27 @@ This project uses 100% real data from U.S. Government public domain sources:
 
 The application:
 1. Fetches the list of active NOAA buoys from `activestations.xml`
-2. Retrieves real-time data for the first 50 buoys from NDBC
-3. Fetches global wave model data from NOAA WaveWatch III via ERDDAP for 20+ strategic locations worldwide
+2. Retrieves real-time data for ~60 buoys from NDBC with geographic distribution across Pacific, Atlantic, and other regions
+3. **Wave data loads instantly** from pre-fetched JSON updated every 3 hours via GitHub Actions
 4. Displays all data on an interactive map with color-coded markers
-5. Auto-refreshes every 5 minutes to keep data current
+5. Auto-refreshes buoy data every 5 minutes
+
+### Automated Data Updates
+
+Wave forecast data is automatically updated every 3 hours using GitHub Actions:
+- Workflow fetches latest data from NOAA WaveWatch III ERDDAP
+- Saves to `data/wave-data.json`
+- Commits and pushes to repository
+- Page loads this pre-fetched data instantly (no CORS proxy needed!)
+- Manual workflow trigger available in GitHub Actions tab
 
 ## API Endpoints Used
 
 - **NOAA NDBC Active Stations**: `https://www.ndbc.noaa.gov/activestations.xml`
 - **NOAA NDBC Real-time Data**: `https://www.ndbc.noaa.gov/data/realtime2/{station_id}.txt`
 - **NOAA WaveWatch III ERDDAP**: `https://coastwatch.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json`
+  - Fetched every 3 hours via GitHub Actions
+  - Pre-cached in `data/wave-data.json` for instant loading
 
 ## Wave Height Color Legend
 
@@ -72,8 +83,9 @@ Simply open the page and the data will load automatically. Use the controls to:
 - **Frontend**: HTML5, CSS3, JavaScript (Vanilla)
 - **Mapping**: Leaflet.js
 - **Data APIs**:
-  - NOAA NDBC Real-time Data
-  - NOAA WaveWatch III via ERDDAP
+  - NOAA NDBC Real-time Data (via CORS proxy)
+  - NOAA WaveWatch III via ERDDAP (pre-fetched)
+- **Automation**: GitHub Actions (scheduled data updates)
 - **Deployment**: GitHub Pages
 
 ## License

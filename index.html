@@ -702,86 +702,57 @@
             waveData = [];
 
             try {
-                console.log('Starting wave data fetch...');
-                updateProgress(0, 'Preparing to fetch global wave data...');
+                console.log('Loading pre-fetched wave data...');
+                updateProgress(10, 'Loading wave data from GitHub...');
 
-                // All wave points
-                const wavePoints = [
-                    { lat: 40.5, lon: 286.0, name: "North Atlantic" },
-                    { lat: 33.5, lon: 241.8, name: "Pacific Coast" },
-                    { lat: -33.5, lon: 151.5, name: "Sydney" },
-                    { lat: 51.5, lon: 359.5, name: "English Channel" },
-                    { lat: 1.5, lon: 104.0, name: "Singapore" },
-                    { lat: 25.5, lon: 279.8, name: "Miami" },
-                    { lat: 21.5, lon: 202.5, name: "Hawaii" },
-                    { lat: -23.5, lon: 313.5, name: "São Paulo Coast" },
-                    { lat: 55.5, lon: 12.5, name: "Baltic Sea" },
-                    { lat: 35.5, lon: 140.0, name: "Tokyo Bay" },
-                    { lat: -34.5, lon: 18.5, name: "Cape Town" },
-                    { lat: 59.5, lon: 11.0, name: "Oslo Fjord" },
-                    { lat: 37.5, lon: 237.5, name: "San Francisco" },
-                    { lat: 41.5, lon: 12.5, name: "Mediterranean" },
-                    { lat: -37.5, lon: 145.0, name: "Melbourne" },
-                    { lat: 13.0, lon: 80.5, name: "Bay of Bengal" },
-                    { lat: -12.0, lon: 283.0, name: "Peru Coast" },
-                    { lat: 64.0, lon: 338.0, name: "Iceland" },
-                    { lat: -41.0, lon: 175.0, name: "New Zealand" },
-                    { lat: 0.0, lon: 330.0, name: "Mid Atlantic" }
-                ];
-
-                const corsProxy = 'https://corsproxy.io/?';
-                const totalPoints = wavePoints.length;
-
-                for (let i = 0; i < wavePoints.length; i++) {
-                    const point = wavePoints[i];
-                    const percent = ((i + 1) / totalPoints) * 100;
-
-                    updateProgress(percent,
-                        `Fetching: ${point.name} (${i + 1}/${totalPoints}) - ${Math.round(percent)}%`);
-
-                    try {
-                        const baseUrl = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json`;
-                        const query = `?Thgt[(last)][(0.0)][({${point.lat}})][({${point.lon}})],Tdir[(last)][(0.0)][({${point.lat}})][({${point.lon}})],Tper[(last)][(0.0)][({${point.lat}})][({${point.lon}})]`;
-                        const url = corsProxy + encodeURIComponent(baseUrl + query);
-
-                        const response = await fetch(url);
-                        if (response.ok) {
-                            const data = await response.json();
-                            if (data.table && data.table.rows && data.table.rows.length > 0) {
-                                const row = data.table.rows[0];
-                                waveData.push({
-                                    ...point,
-                                    waveHeight: row[4],
-                                    waveDirection: row[5],
-                                    wavePeriod: row[6],
-                                    timestamp: new Date(row[0]).toISOString()
-                                });
-
-                                // Update display incrementally
-                                displayWaves();
-                                updateStats();
-
-                                console.log(`✓ ${point.name}: ${row[4]?.toFixed(2)}m`);
-                            } else {
-                                console.warn(`✗ ${point.name}: No data available`);
-                            }
-                        } else {
-                            console.warn(`✗ ${point.name}: HTTP ${response.status}`);
-                        }
-                    } catch (error) {
-                        console.error(`✗ ${point.name}: ${error.message}`);
-                    }
+                // Load pre-fetched data from JSON file
+                const response = await fetch('data/wave-data.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
                 }
 
-                console.log(`Wave data: ${waveData.length}/${totalPoints} points loaded`);
+                const data = await response.json();
+                console.log(`Loaded ${data.length} wave data points`);
 
-                updateProgress(100, `Complete! ${waveData.length}/${totalPoints} wave points loaded`);
+                updateProgress(50, `Processing ${data.length} wave points...`);
+
+                // Process and display each point
+                let loaded = 0;
+                for (let i = 0; i < data.length; i++) {
+                    const point = data[i];
+
+                    // Skip placeholder/invalid data
+                    if (point.waveHeight !== null && !isNaN(point.waveHeight)) {
+                        waveData.push(point);
+                        loaded++;
+
+                        // Update display incrementally
+                        displayWaves();
+                        updateStats();
+
+                        console.log(`✓ ${point.name}: ${point.waveHeight?.toFixed(2)}m`);
+                    } else {
+                        console.warn(`✗ ${point.name}: No valid data`);
+                    }
+
+                    const percent = 50 + ((i + 1) / data.length) * 50;
+                    updateProgress(percent, `Loaded: ${point.name} (${i + 1}/${data.length})`);
+                }
+
+                console.log(`Wave data: ${loaded}/${data.length} valid points loaded`);
+
+                updateProgress(100, `Complete! ${loaded}/${data.length} wave points loaded`);
 
                 // Update timestamp
                 const currentUpdate = document.getElementById('lastUpdate').textContent;
+                const dataTimestamp = waveData.length > 0 && waveData[0].timestamp ?
+                    new Date(waveData[0].timestamp).toLocaleString() :
+                    new Date().toLocaleString();
+
                 document.getElementById('lastUpdate').textContent =
-                    currentUpdate ? currentUpdate + ` | Waves: ${new Date().toLocaleString()}` :
-                    `Waves updated: ${new Date().toLocaleString()}`;
+                    currentUpdate ?
+                    currentUpdate + ` | Waves: ${dataTimestamp}` :
+                    `Waves: ${dataTimestamp}`;
 
                 // Hide progress after a brief delay
                 setTimeout(hideProgress, 1500);

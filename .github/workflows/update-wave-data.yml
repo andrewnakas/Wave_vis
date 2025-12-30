@@ -1,0 +1,119 @@
+name: Update Wave Data
+
+on:
+  schedule:
+    # Run every 3 hours (NOAA updates model data every 6 hours)
+    - cron: '0 */3 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: claude/weather-buoy-wave-map-k0pOF
+
+      - name: Fetch wave data from NOAA WaveWatch III
+        run: |
+          echo "Fetching wave data from NOAA WaveWatch III ERDDAP..."
+
+          # Create data directory if it doesn't exist
+          mkdir -p data
+
+          # Wave points to fetch
+          declare -A points=(
+            ["North_Atlantic"]="40.5,286.0"
+            ["Pacific_Coast"]="33.5,241.8"
+            ["Sydney"]="-33.5,151.5"
+            ["English_Channel"]="51.5,359.5"
+            ["Singapore"]="1.5,104.0"
+            ["Miami"]="25.5,279.8"
+            ["Hawaii"]="21.5,202.5"
+            ["Sao_Paulo_Coast"]="-23.5,313.5"
+            ["Baltic_Sea"]="55.5,12.5"
+            ["Tokyo_Bay"]="35.5,140.0"
+            ["Cape_Town"]="-34.5,18.5"
+            ["Oslo_Fjord"]="59.5,11.0"
+            ["San_Francisco"]="37.5,237.5"
+            ["Mediterranean"]="41.5,12.5"
+            ["Melbourne"]="-37.5,145.0"
+            ["Bay_of_Bengal"]="13.0,80.5"
+            ["Peru_Coast"]="-12.0,283.0"
+            ["Iceland"]="64.0,338.0"
+            ["New_Zealand"]="-41.0,175.0"
+            ["Mid_Atlantic"]="0.0,330.0"
+          )
+
+          # Start JSON array
+          echo "[" > data/wave-data.json
+
+          first=true
+          for name in "${!points[@]}"; do
+            IFS=',' read -r lat lon <<< "${points[$name]}"
+
+            echo "Fetching: $name ($lat, $lon)"
+
+            # Build ERDDAP URL
+            base_url="https://coastwatch.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json"
+            query="?Thgt[(last)][(0.0)][({$lat})][({$lon})],Tdir[(last)][(0.0)][({$lat})][({$lon})],Tper[(last)][(0.0)][({$lat})][({$lon})]"
+
+            # Fetch data with retry
+            response=$(curl -s -f "$base_url$query" || echo "")
+
+            if [ -n "$response" ]; then
+              # Parse JSON response
+              timestamp=$(echo "$response" | jq -r '.table.rows[0][0]' 2>/dev/null || echo "null")
+              waveHeight=$(echo "$response" | jq -r '.table.rows[0][4]' 2>/dev/null || echo "null")
+              waveDirection=$(echo "$response" | jq -r '.table.rows[0][5]' 2>/dev/null || echo "null")
+              wavePeriod=$(echo "$response" | jq -r '.table.rows[0][6]' 2>/dev/null || echo "null")
+
+              # Add comma for all but first entry
+              if [ "$first" = false ]; then
+                echo "," >> data/wave-data.json
+              fi
+              first=false
+
+              # Create JSON object
+              cat >> data/wave-data.json <<EOF
+  {
+    "name": "$(echo $name | sed 's/_/ /g')",
+    "lat": $lat,
+    "lon": $lon,
+    "waveHeight": $waveHeight,
+    "waveDirection": $waveDirection,
+    "wavePeriod": $wavePeriod,
+    "timestamp": "$timestamp"
+  }
+EOF
+              echo "✓ $name: ${waveHeight}m"
+            else
+              echo "✗ $name: Failed to fetch"
+            fi
+
+            # Small delay to be nice to the API
+            sleep 1
+          done
+
+          # Close JSON array
+          echo "" >> data/wave-data.json
+          echo "]" >> data/wave-data.json
+
+          echo "Wave data saved to data/wave-data.json"
+
+      - name: Commit and push if changed
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+          git add data/wave-data.json
+
+          if git diff --staged --quiet; then
+            echo "No changes to wave data"
+          else
+            git commit -m "Update wave data - $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+            echo "Wave data updated and pushed"
+          fi
