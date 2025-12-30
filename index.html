@@ -360,7 +360,7 @@
                 const xml = parser.parseFromString(text, 'text/xml');
                 const stations = xml.querySelectorAll('station');
 
-                const buoyList = [];
+                const allStations = [];
                 stations.forEach(station => {
                     const lat = parseFloat(station.getAttribute('lat'));
                     const lon = parseFloat(station.getAttribute('lon'));
@@ -369,13 +369,33 @@
                     const type = station.getAttribute('type');
                     const met = station.getAttribute('met');
 
-                    // Only include stations with meteorological data and valid coordinates
-                    if (lat && lon && id && met === 'y' && type === 'buoy') {
-                        buoyList.push({ id, name, lat, lon });
+                    // Include all stations with meteorological data (buoys, fixed, oil rigs, etc.)
+                    if (lat && lon && id && met === 'y') {
+                        allStations.push({ id, name, lat, lon, type });
                     }
                 });
 
-                console.log(`Found ${buoyList.length} buoys with meteorological data`);
+                console.log(`Found ${allStations.length} stations with meteorological data`);
+
+                // Distribute geographically for better global coverage
+                // Group by ocean regions based on longitude
+                const pacific = allStations.filter(s =>
+                    (s.lon >= -180 && s.lon <= -100) || (s.lon >= 100 && s.lon <= 180));
+                const atlantic = allStations.filter(s =>
+                    s.lon > -100 && s.lon < -10);
+                const other = allStations.filter(s =>
+                    s.lon >= -10 && s.lon < 100);
+
+                console.log(`Distribution: Pacific=${pacific.length}, Atlantic=${atlantic.length}, Other=${other.length}`);
+
+                // Take proportional samples from each region
+                const buoyList = [
+                    ...pacific.slice(0, 25),
+                    ...atlantic.slice(0, 20),
+                    ...other.slice(0, 15)
+                ];
+
+                console.log(`Selected ${buoyList.length} stations for display`);
                 return buoyList;
             } catch (error) {
                 console.error('Error fetching buoy stations:', error);
@@ -628,9 +648,8 @@
                 console.log(`Found ${stations.length} total buoy stations`);
                 updateProgress(10, `Found ${stations.length} buoy stations`);
 
-                // Load all buoys
-                const totalBuoys = Math.min(stations.length, 50); // Cap at 50 for performance
-                const buoysToLoad = stations.slice(0, totalBuoys);
+                // Load all buoys (already filtered for geographic distribution)
+                const buoysToLoad = stations;
 
                 for (let i = 0; i < buoysToLoad.length; i++) {
                     const station = buoysToLoad[i];
