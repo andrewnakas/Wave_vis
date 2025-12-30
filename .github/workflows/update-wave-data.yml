@@ -6,6 +6,9 @@ on:
     - cron: '0 */3 * * *'
   workflow_dispatch:  # Allow manual trigger
 
+permissions:
+  contents: write  # Allow pushing commits
+
 jobs:
   update-data:
     runs-on: ubuntu-latest
@@ -15,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: claude/weather-buoy-wave-map-k0pOF
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fetch wave data from NOAA WaveWatch III
         run: |
@@ -56,12 +60,15 @@ jobs:
 
             echo "Fetching: $name ($lat, $lon)"
 
-            # Build ERDDAP URL
+            # Build ERDDAP URL - use simpler format
             base_url="https://coastwatch.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json"
-            query="?Thgt[(last)][(0.0)][({$lat})][({$lon})],Tdir[(last)][(0.0)][({$lat})][({$lon})],Tper[(last)][(0.0)][({$lat})][({$lon})]"
+            query="?Thgt[(last)][(0.0)][($lat)][($lon)],Tdir[(last)][(0.0)][($lat)][($lon)],Tper[(last)][(0.0)][($lat)][($lon)]"
+            full_url="${base_url}${query}"
 
-            # Fetch data with retry
-            response=$(curl -s -f "$base_url$query" || echo "")
+            echo "URL: $full_url"
+
+            # Fetch data with retry and verbose output
+            response=$(curl -s -f -m 30 "$full_url" 2>&1 || echo "")
 
             if [ -n "$response" ]; then
               # Parse JSON response
