@@ -77,17 +77,17 @@ jobs:
               first=false
 
               # Create JSON object
-              cat >> data/wave-data.json <<EOF
-  {
-    "name": "$(echo $name | sed 's/_/ /g')",
-    "lat": $lat,
-    "lon": $lon,
-    "waveHeight": $waveHeight,
-    "waveDirection": $waveDirection,
-    "wavePeriod": $wavePeriod,
-    "timestamp": "$timestamp"
-  }
-EOF
+              displayName=$(echo $name | sed 's/_/ /g')
+              echo "  {" >> data/wave-data.json
+              echo "    \"name\": \"$displayName\"," >> data/wave-data.json
+              echo "    \"lat\": $lat," >> data/wave-data.json
+              echo "    \"lon\": $lon," >> data/wave-data.json
+              echo "    \"waveHeight\": $waveHeight," >> data/wave-data.json
+              echo "    \"waveDirection\": $waveDirection," >> data/wave-data.json
+              echo "    \"wavePeriod\": $wavePeriod," >> data/wave-data.json
+              echo "    \"timestamp\": \"$timestamp\"" >> data/wave-data.json
+              echo "  }" >> data/wave-data.json
+
               echo "✓ $name: ${waveHeight}m"
             else
               echo "✗ $name: Failed to fetch"
